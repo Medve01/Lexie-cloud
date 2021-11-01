@@ -1,0 +1,23 @@
+{
+    "type": "action.devices.types.SWITCH",
+    "traits": [
+        "action.devices.traits.OnOff"
+    ],
+    "name": {
+        "name": "test device",
+        "defaultNames": [
+          "Test Device"
+        ],
+        "nicknames": [
+            "Test Device"
+        ]
+    },
+    "willReportState": false,
+    "roomHint": "My room",
+    "deviceInfo": {
+        "manufacturer": "Lexie",
+        "model": "1",
+        "hwVersion": "1",
+        "swVersion": "1"
+    }
+}

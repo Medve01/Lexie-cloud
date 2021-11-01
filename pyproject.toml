@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "google-assistant-smart-home"
+version = "0.1.0"
+description = ""
+authors = ["Your Name <you@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+Flask = "^2.0.2"
+requests = "^2.26.0"
+
+[tool.poetry.dev-dependencies]
+tox = "^3.24.4"
+pylint = "^2.11.1"
+pytest = "^6.2.5"
+pytest-html = "^3.1.1"
+bandit = "^1.7.0"
+mypy = "^0.910"
+tox-poetry = "^0.4.1"
+coverage = "^6.1.1"
+pytest-cov = "^3.0.0"
+pytest-mock = "^3.6.1"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
