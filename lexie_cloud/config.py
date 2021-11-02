@@ -1,7 +1,7 @@
 # import logging
 
 CLIENT_ID = "YOUR_SMART_HOME_NAME"
-CLIENT_SECRET = "YOUR_SECRET"
+CLIENT_SECRET = "YOUR_SECRET" # nosecurity # this is throwaway
 API_KEY = "YOUR_API_KEY"
 USERS_DIRECTORY = "/home/google_home/users"
 TOKENS_DIRECTORY = "/home/google_home/tokens"

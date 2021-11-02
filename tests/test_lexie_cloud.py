@@ -1,8 +1,12 @@
+import json
 import pytest
+from time import time
 
 from tests.fixtures.test_app import app,client
 import lexie_cloud.views
 import requests
+
+MOCK_CALLED=''
 
 def test_get_root(client):
     result = client.get("/")
@@ -113,3 +117,255 @@ def test_auth_post_logon(monkeypatch, client, app):
         data={'username': 'test_user', 'password': 'test'},
     )
     assert result.status_code == 302
+
+def test_token_post(monkeypatch, client):
+    result = client.post("/token/")
+    assert result.status_code == 400
+    monkeypatch.setattr('lexie_cloud.views.config.CLIENT_SECRET', 'test_client_secret')
+    monkeypatch.setattr('lexie_cloud.views.config.CLIENT_ID', 'test_client_id')
+    monkeypatch.setattr('lexie_cloud.views.LAST_CODE', 'test_code')
+    monkeypatch.setattr('lexie_cloud.views.LAST_CODE_TIME', time())
+    monkeypatch.setattr('lexie_cloud.views.config.TOKENS_DIRECTORY', './tests/fixtures/tokens/')
+    monkeypatch.setattr('lexie_cloud.views.LAST_CODE_USER', 'test_user')
+    result = client.post("/token/",
+        data={
+                'client_secret' : 'test_client_secret',
+                'client_id': 'test_client_id',
+                'code': 'test_code',
+            }
+    )
+    assert result.status_code == 200
+    assert 'access_token' in result.json.keys()
+    result = client.post("/token/",
+        data={
+                'client_secret' : 'test_client_secret',
+                'client_id': 'test_client_id',
+                'code': 'invalid_test_code',
+            }
+    )
+    assert result.status_code == 403
+    assert result.data == b'Invalid code'
+    monkeypatch.setattr('lexie_cloud.views.LAST_CODE_TIME', time() - 11)
+    result = client.post("/token/",
+        data={
+                'client_secret' : 'test_client_secret',
+                'client_id': 'test_client_id',
+                'code': 'test_code',
+            }
+    )
+    assert result.status_code == 403
+    assert result.data == b'Code is too old'
+
+def test_google_post_invalidoken(monkeypatch, client):
+    def mock_check_token():
+        return None
+    monkeypatch.setattr('lexie_cloud.views.check_token', mock_check_token)
+    result = client.post("/")
+    assert result.status_code == 403
+    assert result.data == b'Access denied'
+
+def test_google_post_sync(monkeypatch, client):
+    def mock_check_token():
+        return 'test_user'
+    def mock_get_user(username):
+        return {
+                    "password": "test",
+                    "devices": [
+                        "pc"
+                    ]
+                }
+    def mock_get_device(device_id):
+        return {
+                            "id": "test_device",
+                            "type": "action.devices.types.SWITCH",
+                            "traits": [
+                                "action.devices.traits.OnOff"
+                            ],
+                            "name": {
+                                "name": "test device",
+                                "defaultNames": [
+                                "Test Device"
+                                ],
+                                "nicknames": [
+                                    "Test Device"
+                                ]
+                            },
+                            "willReportState": False,
+                            "roomHint": "My room",
+                            "deviceInfo": {
+                                "manufacturer": "Lexie",
+                                "model": "1",
+                                "hwVersion": "1",
+                                "swVersion": "1"
+                            }
+                        }
+    monkeypatch.setattr('lexie_cloud.views.check_token', mock_check_token)
+    monkeypatch.setattr('lexie_cloud.views.get_device', mock_get_device)
+    monkeypatch.setattr('lexie_cloud.views.get_user', mock_get_user)
+    result = client.post("/",
+        json={
+            'requestId': '1111',
+            'inputs': [
+                {'intent': 'action.devices.SYNC'}
+            ]
+        }
+    )
+    assert result.json == {
+        'payload': {
+            'agentUserId': 'test_user',
+            'devices': [
+                {
+                    'deviceInfo': {
+                        'hwVersion': '1',
+                        'manufacturer': 'Lexie',
+                        'model': '1',
+                        'swVersion': '1'
+                    },
+                    'id': 'test_device',
+                    'name': {
+                        'defaultNames': [
+                            'Test Device'
+                        ],
+                        'name': 'test device',
+                        'nicknames': [
+                            'Test Device'
+                        ]
+                    },
+                    'roomHint': 'My room',
+                    'traits': [
+                        'action.devices.traits.OnOff'
+                    ],
+                    'type': 'action.devices.types.SWITCH',
+                    'willReportState': False
+                }
+            ]
+        },
+        'requestId': '1111'
+    }
+
+def test_google_post_query(monkeypatch, client):
+    def mock_check_token():
+        return 'test_user'
+    def mock_action_query(params):
+        return {"on": True, "online": True}
+    def mock_get_method(module, name):
+        return mock_action_query
+    monkeypatch.setattr('lexie_cloud.views.check_token', mock_check_token)
+    monkeypatch.setattr('lexie_cloud.views.get_method', mock_get_method)
+    result = client.post("/",
+        json={
+            'requestId': '1111',
+            'inputs': [
+                {
+                    'intent': 'action.devices.QUERY',
+                    'payload': {
+                        'devices': [
+                            {
+                                'id': 'pc'
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    )
+
+    assert result.json == {
+        'payload': {
+            'devices': {
+                'pc': {
+                    'on': True,
+                    'online': True
+                }
+            }
+        },
+        'requestId': '1111'
+    }
+
+def test_google_post_execute(monkeypatch, client):
+    def mock_get_token():
+        return 'test_user'
+    def mock_check_token():
+        return 'test_user'
+    def mock_action_execute(param1, param2, param3):
+        return {"on": True, "online": True}
+    def mock_get_method(module, name):
+        return mock_action_execute
+    monkeypatch.setattr('lexie_cloud.views.check_token', mock_check_token)
+    monkeypatch.setattr('lexie_cloud.views.get_method', mock_get_method)
+
+
+    monkeypatch.setattr('lexie_cloud.views.get_token', mock_get_token)
+    monkeypatch.setattr('lexie_cloud.views.check_token', mock_check_token)
+    result = client.post("/",
+        json={
+            'requestId': '1111',
+            'inputs': [
+                {
+                    'intent': 'action.devices.EXECUTE',
+                    'payload': {
+                        'commands': [
+                                {
+                                    'devices': [
+                                        {
+                                            'id': 'pc'
+                                        }
+                                    ],
+                                'execution': [
+                                    {
+                                        'command': 'action.devices.commands.OnOff',
+                                        'params': 'on'
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    )
+    assert result.json == {
+        "payload":{
+            "commands":[
+                {
+                    "ids":[
+                        "pc"
+                    ],
+                    "on":True,
+                    "online":True
+                }
+            ]
+        },
+        "requestId":"1111"
+    }
+
+
+def test_google_post_disconnect(monkeypatch, client):
+    def mock_get_token():
+        return 'test_user'
+    def mock_check_token():
+        return 'test_user'
+    def mock_isfile(param):
+        return True
+    def mock_access(param1, param2):
+        return True
+    def mock_os_remove(param):
+        global MOCK_CALLED
+        MOCK_CALLED = 'mock_os_remove'
+    monkeypatch.setattr('lexie_cloud.views.get_token', mock_get_token)
+    monkeypatch.setattr('lexie_cloud.views.check_token', mock_check_token)
+    monkeypatch.setattr('os.path.isfile', mock_isfile)
+    monkeypatch.setattr('os.access', mock_access)
+    monkeypatch.setattr('os.remove', mock_os_remove)
+    result = client.post("/",
+        json={
+            'requestId': '1111',
+            'inputs': [
+                {
+                    'intent': 'action.devices.DISCONNECT',
+                }
+            ]
+        }
+    )
+    assert result.json == {}
+    assert MOCK_CALLED == 'mock_os_remove'

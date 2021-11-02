@@ -98,7 +98,11 @@ def random_string(string_length=8):
         [type]: [description]
     """
     chars = string.ascii_letters + string.digits
-    return ''.join(random.choice(chars) for i in range(string_length))
+    return ''.join(random.choice(chars) for i in range(string_length)) # nosecurity
+
+def get_method(module, methodname): # pragma: nocover
+    """ screw it """
+    return getattr(module, methodname)
 
 @view.route('/css/<path:path>')
 def send_css(path):
@@ -229,9 +233,9 @@ def fulfillment(): # pylint: disable=too-many-locals,too-many-branches
                 device_id = device['id']
                 custom_data = device.get("customData", None)
                 # Load module for this device
-                device_module = importlib.import_module(device_id)
+                device_module = importlib.import_module('lexie_cloud.devices.' + device_id)
                 # Call query method for this device
-                query_method = getattr(device_module, device_id + "_query")
+                query_method = get_method(device_module, device_id + "_query")
                 result['payload']['devices'][device_id] = query_method(custom_data)
 
         # Execute intent, need to execute some action
@@ -243,9 +247,9 @@ def fulfillment(): # pylint: disable=too-many-locals,too-many-branches
                     device_id = device['id']
                     custom_data = device.get("customData", None)
                     # Load module for this device
-                    device_module = importlib.import_module(device_id)
+                    device_module = importlib.import_module('lexie_cloud.devices.' + device_id)
                     # Call execute method for this device for every execute command
-                    action_method = getattr(device_module, device_id + "_action")
+                    action_method = get_method(device_module, device_id + "_action")
                     for execution in command['execution']:
                         command = execution['command']
                         params = execution.get("params", None)

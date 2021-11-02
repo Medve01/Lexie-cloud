@@ -153,3 +153,4 @@ pytest-report.html
 
 routines_db.json
 flask_secret.json
+tests/fixtures/tokens
