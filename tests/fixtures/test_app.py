@@ -1,6 +1,12 @@
 import pytest
 
+from flask import testing
+from werkzeug.datastructures import Headers
+
 from lexie_cloud.app import create_app
+
+TEST_AUTH = 'test_instance:blarftegh'
+
 
 @pytest.fixture
 def app():

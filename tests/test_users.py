@@ -1,16 +1,29 @@
-import pytest
-import tinydb
-import  lexie_cloud.users
 import os
 
+import pytest
+import tinydb
 from shortuuid import uuid
-from lexie_cloud.exceptions import InvalidUserNamePasswordException, UserAlreadyExistsException, UserNotFoundException
+
+import lexie_cloud.users
+from lexie_cloud.exceptions import (InstanceAuthenticationFailureException,
+                                    InvalidUserNamePasswordException,
+                                    UserAlreadyExistsException,
+                                    UserNotFoundException)
+
 
 @pytest.fixture
 def user_db():
     temp_file = '/tmp/' + uuid()
     _user_db = tinydb.TinyDB(temp_file)
     yield _user_db
+    os.remove(temp_file)
+    return
+
+@pytest.fixture
+def lexie_instance_db():
+    temp_file = '/tmp/' + uuid()
+    _db = tinydb.TinyDB(temp_file)
+    yield _db
     os.remove(temp_file)
     return
 
@@ -57,4 +70,23 @@ def test_authenticate_user_wrongpassword(monkeypatch, user_db):
     with pytest.raises(InvalidUserNamePasswordException):
         user = lexie_cloud.users.authenticate_user('test_user', 'password')
 
+def test_add_lexie_instance(monkeypatch, lexie_instance_db):
+    monkeypatch.setattr('lexie_cloud.users.lexie_instance_table', lexie_instance_db)
+    instance = lexie_cloud.users.add_lexie_instance('test_user', 'test_instance')
+    assert instance['username'] == 'test_user'
+    assert instance['name'] == 'test_instance'
+    assert 'apikey' in instance.keys()
 
+def test_authenticate_lexie_instance(monkeypatch, lexie_instance_db):
+    monkeypatch.setattr('lexie_cloud.users.lexie_instance_table', lexie_instance_db)
+    instance = lexie_cloud.users.add_lexie_instance('test_user', 'test_instance')
+    result = lexie_cloud.users.authenticate_lexie_instance(instance['id'], instance['apikey'])
+    assert result['id'] == instance['id']
+
+def test_authenticate_lexie_instance_autherror(monkeypatch, lexie_instance_db):
+    monkeypatch.setattr('lexie_cloud.users.lexie_instance_table', lexie_instance_db)
+    instance = lexie_cloud.users.add_lexie_instance('test_user', 'test_instance')
+    with pytest.raises(InstanceAuthenticationFailureException):
+        result = lexie_cloud.users.authenticate_lexie_instance(instance['id'], 'invalid_api_key')
+    with pytest.raises(InstanceAuthenticationFailureException):
+        result = lexie_cloud.users.authenticate_lexie_instance('invalid_instance_id', 'invalid_api_key')

@@ -1,11 +1,14 @@
 import bcrypt
 import tinydb
+from shortuuid import uuid
 
-from lexie_cloud.exceptions import (InvalidUserNamePasswordException,
+from lexie_cloud.exceptions import (InstanceAuthenticationFailureException,
+                                    InvalidUserNamePasswordException,
                                     UserAlreadyExistsException,
                                     UserNotFoundException)
 
 user_table = tinydb.TinyDB('users.json').table('users')
+lexie_instance_table  = tinydb.TinyDB('users.json').table('lexie_instances')
 
 def add_user(username, password, lexie_url, api_key):
     """Adds a user to the database. raises UserAlreadyExistsException if username is not unique
@@ -68,3 +71,48 @@ def authenticate_user(username, password):
         raise InvalidUserNamePasswordException()
     user['password'] = '*******' # nosecurity # go home bandit, you're drunk (this is not a password)
     return user
+
+def add_lexie_instance(username, lexie_instance_name):
+    """Stores a new local Lexie instance in database
+
+    Args:
+        username (str): the user who wants to connect the instance
+        lexie_instance_name (str): the name of the instance
+
+    Returns:
+        dict: represents the lexie instance. ['apikey'] will contain the api key for the instance to use on connecting
+    """
+    salt = bcrypt.gensalt()
+    apikey = uuid() + uuid() + uuid() + uuid()
+    hashed_apikey = bcrypt.hashpw(apikey.encode('UTF-8'), salt)
+    lexie_instance = {
+        'username': username,
+        'name': lexie_instance_name,
+        'apikey': hashed_apikey.decode('UTF-8'),
+        'id': uuid()
+    }
+    lexie_instance_table.insert(lexie_instance)
+    lexie_instance['apikey'] = apikey
+    return lexie_instance
+
+def authenticate_lexie_instance(instance_id, apikey):
+    """Authenticates a local Lexie instance on connection
+
+    Args:
+        instance_id (str): the Lexie instance id (comes from add_lexie_instance)
+        apikey (str): api key
+
+    Raises:
+        InstanceAuthenticationFailureException: authentication failure
+
+    Returns:
+        dict: the lexie_instance data stored in db
+    """
+    instance = lexie_instance_table.search(tinydb.Query().id == instance_id)
+    if instance is None or instance == []:
+        raise InstanceAuthenticationFailureException()
+    instance = instance[0]
+    if not bcrypt.checkpw(apikey.encode('UTF-8'), instance['apikey'].encode('UTF-8')):
+        raise InstanceAuthenticationFailureException()
+    instance['apikey'] = '*******' # nosecurity # go home bandit, you're drunk (this is not an api key)
+    return instance

@@ -9,14 +9,21 @@ from time import time
 # import requests
 from flask import (Blueprint, jsonify, redirect, render_template, request,
                    send_from_directory)
+from flask_socketio import disconnect
 
+import lexie_cloud.users
 from lexie_cloud import config
+from lexie_cloud.exceptions import (InstanceAuthenticationFailureException,
+                                    InvalidUserNamePasswordException)
+from lexie_cloud.extensions import socketio
 
 LAST_CODE = None
 LAST_CODE_USER = None
 LAST_CODE_TIME = None
 
 view = Blueprint("view", __name__)
+
+connected_instances = {}
 
 # Function to load user info
 def get_user(username):
@@ -268,3 +275,41 @@ def fulfillment(): # pylint: disable=too-many-locals,too-many-branches
 
     # logger.debug("response: \r\n%s", json.dumps(result, indent=4), extra={'remote_addr': request.remote_addr, 'user': user_id})
     return jsonify(result)
+
+@view.route('/connect-instance', methods=['POST'])
+def connect_instance():
+    """Connects a Lexie local instance to Lexie Cloud. Expects a JSON payload:
+        {
+            'username': user login name,
+            'password": user password,
+            'name': a name for the Lexie instance to store
+        }
+
+    Returns:
+        [type]: [description]
+    """
+    request_data = request.get_json()
+    if not 'username' in request_data.keys() or not 'password' in request_data.keys() or not 'name' in request_data.keys():
+        return jsonify('Invalid parameters'), 400
+    try:
+        lexie_cloud.users.authenticate_user(username=request_data['username'], password=request_data['password'])
+    except InvalidUserNamePasswordException:
+        return jsonify('Authentication error'), 403
+    instance = lexie_cloud.users.add_lexie_instance(username=request_data['username'], lexie_instance_name=request_data['name'])
+    return jsonify({'instance_id': instance['id'], 'apikey': instance['apikey']})
+
+@socketio.on('connect')
+def connect_handler(auth_data=None):
+    """Handles incoming socketio connections. Authenticates based on Authentication header which must be in the following format:
+        Authentication <instance_id>:<apikey>
+    """
+    if auth_data is None or 'instance_id' not in auth_data or 'apikey' not in auth_data:
+        disconnect()
+        return
+    instance_id = auth_data['instance_id']
+    apikey = auth_data['apikey']
+    try:
+        instance = lexie_cloud.users.authenticate_lexie_instance(instance_id, apikey)
+        connected_instances[instance['id']] = request.sid
+    except InstanceAuthenticationFailureException:
+        disconnect()

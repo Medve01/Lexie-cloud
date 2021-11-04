@@ -1,4 +1,5 @@
 import json
+
 import pytest
 
 import lexie_cloud.lexie_devices

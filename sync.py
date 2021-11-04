@@ -3,9 +3,8 @@
 import json
 import os
 
-import requests
-
 import config
+import requests
 
 users = os.listdir(config.USERS_DIRECTORY)
 for user_file in users:

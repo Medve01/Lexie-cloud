@@ -1,10 +1,12 @@
-import json
-import pytest
 from time import time
 
-from tests.fixtures.test_app import app,client
+import pytest
+from shortuuid import uuid
+
 import lexie_cloud.views
-import requests
+from lexie_cloud.exceptions import InstanceAuthenticationFailureException, InvalidUserNamePasswordException
+from lexie_cloud.extensions import socketio
+from tests.fixtures.test_app import app, client
 
 MOCK_CALLED=''
 
@@ -369,3 +371,100 @@ def test_google_post_disconnect(monkeypatch, client):
     )
     assert result.json == {}
     assert MOCK_CALLED == 'mock_os_remove'
+
+def test_connect_instance(monkeypatch, client):
+    def mock_authenticate_user(username, password):
+        return True
+    def mock_add_lexie_instance(username, lexie_instance_name):
+        return {
+            'username': username,
+            'name': lexie_instance_name,
+            'apikey': uuid() + uuid() + uuid() + uuid(),
+            'id': uuid()
+        }
+    monkeypatch.setattr('lexie_cloud.users.authenticate_user', mock_authenticate_user)
+    monkeypatch.setattr('lexie_cloud.users.add_lexie_instance', mock_add_lexie_instance)
+    result = client.post('/connect-instance', 
+        json={
+            'username': 'test_user',
+            'password': 'test_password',
+            'name': 'test_instance'
+        }
+    )
+    assert result.status_code == 200
+    result_json = result.json
+    assert 'instance_id' in result_json
+    assert 'apikey' in result_json
+
+def test_connect_instance_authfailure(monkeypatch, client):
+    def mock_authenticate_user(username, password):
+        raise InvalidUserNamePasswordException()
+    def mock_add_lexie_instance(username, lexie_instance_name):
+        return {
+            'username': username,
+            'name': lexie_instance_name,
+            'apikey': uuid() + uuid() + uuid() + uuid(),
+            'id': uuid()
+        }
+    monkeypatch.setattr('lexie_cloud.users.authenticate_user', mock_authenticate_user)
+    monkeypatch.setattr('lexie_cloud.users.add_lexie_instance', mock_add_lexie_instance)
+    result = client.post('/connect-instance', 
+        json={
+            'username': 'test_user',
+            'password': 'test_password',
+            'name': 'test_instance'
+        }
+    )
+    assert result.status_code == 403
+
+@pytest.mark.parametrize(('post_json'),
+    (
+        ({'username': 'test_user', 'password': 'test_password'}),
+        ({'username': 'test_user', 'name': 'test_instance'}),
+        ({'name': 'test_instance', 'password': 'test_password'}),
+        ({}),
+    )
+)
+def test_connect_instance_invalidparams(monkeypatch, client, post_json):
+    def mock_authenticate_user(username, password):
+        raise InvalidUserNamePasswordException()
+    def mock_add_lexie_instance(username, lexie_instance_name):
+        return {
+            'username': username,
+            'name': lexie_instance_name,
+            'apikey': uuid() + uuid() + uuid() + uuid(),
+            'id': uuid()
+        }
+    monkeypatch.setattr('lexie_cloud.users.authenticate_user', mock_authenticate_user)
+    monkeypatch.setattr('lexie_cloud.users.add_lexie_instance', mock_add_lexie_instance)
+    result = client.post('/connect-instance', 
+        json=post_json
+    )
+    assert result.status_code == 400
+
+def test_socketio_connect_unauthenticated(monkeypatch, client, app):
+
+    socketio_test_client = socketio.test_client(app, flask_test_client=client)
+    assert not socketio_test_client.is_connected()
+
+def test_socketio_connect_authenticated(monkeypatch, client, app):
+    def mock_authenticate_lexie_instance(instance_id, apikey):
+        return {'id': instance_id}
+    monkeypatch.setattr('lexie_cloud.users.authenticate_lexie_instance', mock_authenticate_lexie_instance)
+    socketio_test_client = socketio.test_client(app, flask_test_client=client, auth={'instance_id': 'test_instance', 'apikey': 'test_apikey'})
+    assert socketio_test_client.is_connected()
+    # isort: off
+    from lexie_cloud.views import connected_instances # pylint: disable=import-outside-toplevel
+    # isort: on
+    assert 'test_instance' in connected_instances
+
+def test_socketio_connect_invalid_api_key(monkeypatch, client, app):
+    def mock_authenticate_lexie_instance(instance_id, apikey):
+        raise InstanceAuthenticationFailureException()
+    monkeypatch.setattr('lexie_cloud.users.authenticate_lexie_instance', mock_authenticate_lexie_instance)
+    socketio_test_client = socketio.test_client(app, flask_test_client=client, auth={'instance_id': 'test_instance', 'apikey': 'test_apikey'})
+    assert not socketio_test_client.is_connected()
+    socketio_test_client = socketio.test_client(app, flask_test_client=client, auth={'instance_id': 'test_instance'})
+    assert not socketio_test_client.is_connected()
+    socketio_test_client = socketio.test_client(app, flask_test_client=client, auth={'apikey': 'test_apikey'})
+    assert not socketio_test_client.is_connected()

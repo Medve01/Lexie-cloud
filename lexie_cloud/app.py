@@ -6,6 +6,7 @@ import sys
 from flask import Flask
 
 from lexie_cloud import config
+from lexie_cloud.extensions import socketio
 
 # Enable log if need
 
@@ -31,5 +32,6 @@ def create_app():
     from lexie_cloud.views import view # pylint: disable=import-outside-toplevel
     # isort: on
     _app.register_blueprint(view)
+    socketio.init_app(_app)
     logger.info("Started.", extra={'remote_addr': '-', 'user': '-'})
     return _app

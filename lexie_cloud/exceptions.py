@@ -6,3 +6,6 @@ class UserAlreadyExistsException(Exception):
 
 class InvalidUserNamePasswordException(Exception):
     """ Invalid username/password given to authentication """
+
+class InstanceAuthenticationFailureException(Exception):
+    """ Lexie instance authentication error """
