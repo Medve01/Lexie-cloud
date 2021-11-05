@@ -6,6 +6,7 @@ API_KEY = "YOUR_API_KEY"
 USERS_DIRECTORY = "/home/google_home/users"
 TOKENS_DIRECTORY = "/home/google_home/tokens"
 DEVICES_DIRECTORY = "/home/google_home/devices"
+S3_BUCKET_NAME = "lexie_cloud_data"
 
 # Uncomment to enable logging
 #LOG_FILE = "/var/log/google-home.log"

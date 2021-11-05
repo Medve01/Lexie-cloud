@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "Lexie Cloud Test Client"
+version = "0.1.0"
+description = ""
+authors = ["Bear <csaba.ferenclaszlo@zapier.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+python-socketio = {extras = ["client"], version = "^5.4.1"}
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

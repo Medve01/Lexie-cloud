@@ -9,3 +9,9 @@ class InvalidUserNamePasswordException(Exception):
 
 class InstanceAuthenticationFailureException(Exception):
     """ Lexie instance authentication error """
+
+class InstanceOfflineException(Exception):
+    """ Lexie instance is offline """
+
+class CommandTimeoutException(Exception):
+    """ Lexie instance failed to respond in a timely manner """

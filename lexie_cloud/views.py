@@ -3,17 +3,21 @@ import json
 import os
 import random
 import string
+import time
 import urllib
-from time import time
+from typing import Any, Dict
 
 # import requests
 from flask import (Blueprint, jsonify, redirect, render_template, request,
                    send_from_directory)
 from flask_socketio import disconnect
+from shortuuid import uuid
 
 import lexie_cloud.users
 from lexie_cloud import config
-from lexie_cloud.exceptions import (InstanceAuthenticationFailureException,
+from lexie_cloud.exceptions import (CommandTimeoutException,
+                                    InstanceAuthenticationFailureException,
+                                    InstanceOfflineException,
                                     InvalidUserNamePasswordException)
 from lexie_cloud.extensions import socketio
 
@@ -23,7 +27,10 @@ LAST_CODE_TIME = None
 
 view = Blueprint("view", __name__)
 
-connected_instances = {}
+connected_instances: Dict[Any, Any] = {}
+SIO_RESPONSE_DATA: Dict[Any, Any] = {}
+SIO_SEND_MAX_WAIT_ITERATIONS = 1000
+
 
 # Function to load user info
 def get_user(username):
@@ -154,7 +161,7 @@ def auth(): # pylint: disable=inconsistent-return-statements
         # Generate random code and remember this user and time
         LAST_CODE = random_string(8)
         LAST_CODE_USER = request.form["username"]
-        LAST_CODE_TIME = time()
+        LAST_CODE_TIME = time.time()
 
         params = {'state': request.args['state'],
                   'code': LAST_CODE,
@@ -183,7 +190,7 @@ def token():
         # logger.warning("invalid code", extra={'remote_addr': request.remote_addr, 'user': LAST_CODE_USER})
         return "Invalid code", 403
     # Check time
-    if  time() - LAST_CODE_TIME > 10:
+    if  time.time() - LAST_CODE_TIME > 10:
         # logger.warning("code is too old", extra={'remote_addr': request.remote_addr, 'user': LAST_CODE_USER})
         return "Code is too old", 403
     # Generate and save random token with username
@@ -298,12 +305,72 @@ def connect_instance():
     instance = lexie_cloud.users.add_lexie_instance(username=request_data['username'], lexie_instance_name=request_data['name'])
     return jsonify({'instance_id': instance['id'], 'apikey': instance['apikey']})
 
+def sio_send_command(username, command, payload):
+    """Sends a command through SocketIO to a connected local Lexie instance
+
+    Args:
+        username (str): the user whose instance we're sending the command to
+        command (str): the command to send. Valid commands: sync, query, execute
+        payload (dict): the payload to pass to the local Lexie instance
+
+    Raises:
+        InstanceOfflineException: local Lexie instance is not connected to SocketIO
+        CommandTimeoutException: local Lexie instance did not send a reply back in a timely manner
+
+    Returns:
+        dict: the payload coming back from the local Lexie instance
+    """
+    request_id = uuid()
+    send_data = {
+        'request_id': request_id,
+        'payload': payload
+    }
+    lexie_instance = lexie_cloud.users.get_lexie_instance(username)
+    if lexie_instance['id'] not in connected_instances:
+        raise InstanceOfflineException()
+    room_id = connected_instances[lexie_instance['id']]
+    socketio.emit(command, send_data, room=room_id, callback=sio_command_callback)
+    global SIO_RESPONSE_DATA # pylint: disable=global-variable-not-assigned
+    stop_wait = False
+    iterations = 0
+    while iterations < SIO_SEND_MAX_WAIT_ITERATIONS and not stop_wait:
+        if request_id in SIO_RESPONSE_DATA:
+            stop_wait = True
+        else:
+            time.sleep(0.01)
+            iterations += 1
+    if request_id not in SIO_RESPONSE_DATA:
+        raise CommandTimeoutException()
+    return SIO_RESPONSE_DATA.pop(request_id)
+
+def sio_command_callback(received_data):
+    """Fetches data send on acknowledge and stores it
+
+    Args:
+        received_data (dict): the payload sent by the client
+    """
+    global SIO_RESPONSE_DATA # pylint: disable=global-variable-not-assigned
+    print(json.dumps(received_data))
+    SIO_RESPONSE_DATA[received_data['request_id']] = received_data['payload']
+
+@view.route('/sio-test/<username>/<command>')
+def sio_test(username, command): # pragma: nocover
+    """just a test endpoint"""
+    try:
+        response = sio_send_command(username, command, {})
+    except (InstanceOfflineException, CommandTimeoutException):
+        return jsonify("timeout"), 504
+    return jsonify(response)
+
 @socketio.on('connect')
 def connect_handler(auth_data=None):
     """Handles incoming socketio connections. Authenticates based on Authentication header which must be in the following format:
         Authentication <instance_id>:<apikey>
     """
+    print(f'Lexie instance connected with sid:{request.sid}')
+    print(json.dumps(auth_data))
     if auth_data is None or 'instance_id' not in auth_data or 'apikey' not in auth_data:
+        print('Authentication failure, disconnecting')
         disconnect()
         return
     instance_id = auth_data['instance_id']
@@ -312,4 +379,5 @@ def connect_handler(auth_data=None):
         instance = lexie_cloud.users.authenticate_lexie_instance(instance_id, apikey)
         connected_instances[instance['id']] = request.sid
     except InstanceAuthenticationFailureException:
+        print('Authentication failure, disconnecting')
         disconnect()

@@ -1,10 +1,13 @@
 import os
-
+import json
 import pytest
 import tinydb
+import boto3
+from moto import mock_s3
 from shortuuid import uuid
 
 import lexie_cloud.users
+from lexie_cloud import config
 from lexie_cloud.exceptions import (InstanceAuthenticationFailureException,
                                     InvalidUserNamePasswordException,
                                     UserAlreadyExistsException,
@@ -90,3 +93,28 @@ def test_authenticate_lexie_instance_autherror(monkeypatch, lexie_instance_db):
         result = lexie_cloud.users.authenticate_lexie_instance(instance['id'], 'invalid_api_key')
     with pytest.raises(InstanceAuthenticationFailureException):
         result = lexie_cloud.users.authenticate_lexie_instance('invalid_instance_id', 'invalid_api_key')
+
+@mock_s3
+def test_save_db_to_s3(monkeypatch):
+    conn = boto3.resource('s3', region_name='us-east-1')
+    conn.create_bucket(Bucket=config.S3_BUCKET_NAME)
+    mock_filename = uuid() + '.json'
+    with open(mock_filename, "w") as jsonFile:
+        jsonFile.write(json.dumps({'success': True}))
+    monkeypatch.setattr('lexie_cloud.users.DATABASE_FILE', mock_filename)
+    lexie_cloud.users.save_db_to_s3()
+    os.remove(mock_filename)
+    body = conn.Object(config.S3_BUCKET_NAME, mock_filename).get()['Body'].read().decode("utf-8")
+    assert json.loads(body) == {'success': True}
+
+def test_get_lexie_instance(monkeypatch, lexie_instance_db):
+    monkeypatch.setattr('lexie_cloud.users.lexie_instance_table', lexie_instance_db)
+    instance = lexie_cloud.users.add_lexie_instance('test_user', 'test_instance')
+    result = lexie_cloud.users.get_lexie_instance('test_user')
+    assert result['id'] == instance['id']
+
+def test_get_lexie_instance_notfound(monkeypatch, lexie_instance_db):
+    monkeypatch.setattr('lexie_cloud.users.lexie_instance_table', lexie_instance_db)
+    assert lexie_cloud.users.get_lexie_instance('test_user') is None
+
+

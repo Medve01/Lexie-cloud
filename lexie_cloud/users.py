@@ -1,14 +1,24 @@
 import bcrypt
+import boto3
 import tinydb
 from shortuuid import uuid
 
+from lexie_cloud import config
 from lexie_cloud.exceptions import (InstanceAuthenticationFailureException,
                                     InvalidUserNamePasswordException,
                                     UserAlreadyExistsException,
                                     UserNotFoundException)
 
-user_table = tinydb.TinyDB('users.json').table('users')
-lexie_instance_table  = tinydb.TinyDB('users.json').table('lexie_instances')
+DATABASE_FILE='users.json'
+user_table = tinydb.TinyDB(DATABASE_FILE).table('users')
+lexie_instance_table  = tinydb.TinyDB(DATABASE_FILE).table('lexie_instances')
+
+def save_db_to_s3():
+    """Saves our tiny database to AWS S3
+    """
+    bucket_name = config.S3_BUCKET_NAME
+    s3client = boto3.client('s3')
+    s3client.upload_file(DATABASE_FILE, bucket_name, DATABASE_FILE)
 
 def add_user(username, password, lexie_url, api_key):
     """Adds a user to the database. raises UserAlreadyExistsException if username is not unique
@@ -46,9 +56,10 @@ def get_user(username, mask_password = True):
     if user is None or user == []:
         raise UserNotFoundException()
     user = user[0]
+    return_user = user.copy()
     if mask_password:
-        user['password'] = '*******' # nosecurity # go home bandit, you're drunk (this is not a password)
-    return user
+        return_user['password'] = '*******' # nosecurity # go home bandit, you're drunk (this is not a password)
+    return return_user
 
 def authenticate_user(username, password):
     """Authenticates a user
@@ -69,8 +80,9 @@ def authenticate_user(username, password):
         raise InvalidUserNamePasswordException() from exception
     if not bcrypt.checkpw(password.encode('UTF-8'), user['password'].encode('UTF-8')):
         raise InvalidUserNamePasswordException()
-    user['password'] = '*******' # nosecurity # go home bandit, you're drunk (this is not a password)
-    return user
+    return_user = user.copy()
+    return_user['password'] = '*******' # nosecurity # go home bandit, you're drunk (this is not a password)
+    return return_user
 
 def add_lexie_instance(username, lexie_instance_name):
     """Stores a new local Lexie instance in database
@@ -92,8 +104,9 @@ def add_lexie_instance(username, lexie_instance_name):
         'id': uuid()
     }
     lexie_instance_table.insert(lexie_instance)
-    lexie_instance['apikey'] = apikey
-    return lexie_instance
+    return_instance = lexie_instance.copy()
+    return_instance['apikey'] = apikey
+    return return_instance
 
 def authenticate_lexie_instance(instance_id, apikey):
     """Authenticates a local Lexie instance on connection
@@ -114,5 +127,22 @@ def authenticate_lexie_instance(instance_id, apikey):
     instance = instance[0]
     if not bcrypt.checkpw(apikey.encode('UTF-8'), instance['apikey'].encode('UTF-8')):
         raise InstanceAuthenticationFailureException()
+    return_instance = instance.copy()
+    return_instance['apikey'] = '*******' # nosecurity # go home bandit, you're drunk (this is not an api key)
+    return return_instance
+
+def get_lexie_instance(username):
+    """Fetches the stored local Lexie instance from DB for a user
+
+    Args:
+        username (str): the user we're looking for
+
+    Returns:
+        dict: the local Lexie instance
+    """
+    db_result = lexie_instance_table.search(tinydb.Query().username == username)
+    if db_result is None or db_result == []:
+        return None
+    instance = db_result[0].copy()
     instance['apikey'] = '*******' # nosecurity # go home bandit, you're drunk (this is not an api key)
     return instance
