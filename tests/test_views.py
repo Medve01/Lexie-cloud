@@ -482,6 +482,18 @@ def test_sio_send_command_timeout(monkeypatch, client, app):
         lexie_cloud.views.sio_send_command('test_user', 'test', {'testkey': 'testvalue'})
     assert socketio_test_client.get_received()[0]['name'] == 'test'
 
+def test_sio_send_command_noinstance(monkeypatch, client, app):
+    def mock_authenticate_lexie_instance(instance_id, apikey):
+        return {'id': instance_id}
+    def mock_get_lexie_instance(username):
+        return None
+    monkeypatch.setattr('lexie_cloud.users.authenticate_lexie_instance', mock_authenticate_lexie_instance)
+    monkeypatch.setattr('lexie_cloud.users.get_lexie_instance', mock_get_lexie_instance)
+    socketio_test_client = socketio.test_client(app, flask_test_client=client, auth={'instance_id': 'test_instance', 'apikey': 'test_apikey'})
+    monkeypatch.setattr('lexie_cloud.views.SIO_SEND_MAX_WAIT_ITERATIONS', 1)
+    with pytest.raises(Exception):
+        lexie_cloud.views.sio_send_command('test_user', 'test', {'testkey': 'testvalue'})
+
 def test_sio_send_command_offline(monkeypatch):
     with pytest.raises(InstanceOfflineException):
         lexie_cloud.views.sio_send_command('test_user', 'test', {'testkey': 'testvalue'})

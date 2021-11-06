@@ -326,6 +326,8 @@ def sio_send_command(username, command, payload):
         'payload': payload
     }
     lexie_instance = lexie_cloud.users.get_lexie_instance(username)
+    if lexie_instance is None:
+        raise Exception('No Lexie Instance registered for user')
     if lexie_instance['id'] not in connected_instances:
         raise InstanceOfflineException()
     room_id = connected_instances[lexie_instance['id']]

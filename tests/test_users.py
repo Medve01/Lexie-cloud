@@ -117,4 +117,3 @@ def test_get_lexie_instance_notfound(monkeypatch, lexie_instance_db):
     monkeypatch.setattr('lexie_cloud.users.lexie_instance_table', lexie_instance_db)
     assert lexie_cloud.users.get_lexie_instance('test_user') is None
 
-
