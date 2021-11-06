@@ -2,13 +2,11 @@
 
 import sys
 
-import lexie_cloud.users
-
 from flask import Flask
 
+import lexie_cloud.users
 from lexie_cloud import config
-from lexie_cloud.extensions import socketio, logger
-
+from lexie_cloud.extensions import logger, socketio
 
 # Path to device plugins
 sys.path.insert(0, config.DEVICES_DIRECTORY)

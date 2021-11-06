@@ -1,17 +1,17 @@
 import os
 
 import bcrypt
-import botocore
 import boto3
+import botocore
 import tinydb
 from shortuuid import uuid
 
 from lexie_cloud import config
-from lexie_cloud.extensions import logger
 from lexie_cloud.exceptions import (InstanceAuthenticationFailureException,
                                     InvalidUserNamePasswordException,
                                     UserAlreadyExistsException,
                                     UserNotFoundException)
+from lexie_cloud.extensions import logger
 
 DATABASE_FILE='users.json'
 user_table = tinydb.TinyDB(DATABASE_FILE).table('users')
@@ -24,7 +24,7 @@ def save_db_to_s3():
     s3client = boto3.client('s3')
     s3client.upload_file(DATABASE_FILE, bucket_name, DATABASE_FILE)
 
-def load_db_from_s3():
+def load_db_from_s3(): # pragma: nocover
     """Loads our tiny db from AWS S3"""
     bucket_name = config.S3_BUCKET_NAME
     s3client = boto3.resource('s3')
