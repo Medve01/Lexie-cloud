@@ -498,11 +498,11 @@ def test_sio_send_command_offline(monkeypatch):
     def mock_authenticate_lexie_instance(instance_id, apikey):
         return {'id': instance_id}
     def mock_get_lexie_instance(username):
-        return {'id': 'test_instance'}
+        return {'id': 'test_instance2'}
     monkeypatch.setattr('lexie_cloud.users.authenticate_lexie_instance', mock_authenticate_lexie_instance)
     monkeypatch.setattr('lexie_cloud.users.get_lexie_instance', mock_get_lexie_instance)
     with pytest.raises(InstanceOfflineException):
-        lexie_cloud.views.sio_send_command('test_user', 'test', {'testkey': 'testvalue'})
+        lexie_cloud.views.sio_send_command('test_user2', 'test', {'testkey': 'testvalue'})
 
 def test_sio_test_send_command(monkeypatch, client, app):
     def mock_authenticate_lexie_instance(instance_id, apikey):
