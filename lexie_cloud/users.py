@@ -1,9 +1,13 @@
+import os
+
 import bcrypt
+import botocore
 import boto3
 import tinydb
 from shortuuid import uuid
 
 from lexie_cloud import config
+from lexie_cloud.extensions import logger
 from lexie_cloud.exceptions import (InstanceAuthenticationFailureException,
                                     InvalidUserNamePasswordException,
                                     UserAlreadyExistsException,
@@ -19,6 +23,24 @@ def save_db_to_s3():
     bucket_name = config.S3_BUCKET_NAME
     s3client = boto3.client('s3')
     s3client.upload_file(DATABASE_FILE, bucket_name, DATABASE_FILE)
+
+def load_db_from_s3():
+    """Loads our tiny db from AWS S3"""
+    bucket_name = config.S3_BUCKET_NAME
+    s3client = boto3.resource('s3')
+
+    try:
+        s3client.Bucket(bucket_name).download_file(DATABASE_FILE, DATABASE_FILE)
+        logger.info('Database loaded from S3')
+    except botocore.exceptions.ClientError as e: # pylint: disable=invalid-name
+        if e.response['Error']['Code'] == "404":
+            print("Database file not found in S3, starting with empty one.")
+        else:
+            if not os.path.exists(DATABASE_FILE):
+                raise
+    except botocore.exceptions.NoCredentialsError:
+        if not os.path.exists(DATABASE_FILE):
+            raise
 
 def add_user(username, password, lexie_url, api_key):
     """Adds a user to the database. raises UserAlreadyExistsException if username is not unique

@@ -1,22 +1,14 @@
 # coding: utf8
 
-import logging
 import sys
+
+import lexie_cloud.users
 
 from flask import Flask
 
 from lexie_cloud import config
-from lexie_cloud.extensions import socketio
+from lexie_cloud.extensions import socketio, logger
 
-# Enable log if need
-
-# if hasattr(config, 'LOG_FILE'):
-#     logging.basicConfig(level=config.LOG_LEVEL,
-#                     format=config.LOG_FORMAT,
-#                     datefmt=config.LOG_DATE_FORMAT,
-#                     filename=config.LOG_FILE,
-#                     filemode='a')
-logger = logging.getLogger()
 
 # Path to device plugins
 sys.path.insert(0, config.DEVICES_DIRECTORY)
@@ -27,6 +19,7 @@ def create_app():
     Returns:
         [type]: [description]
     """
+    lexie_cloud.users.load_db_from_s3()
     _app = Flask(__name__)
     # isort: off
     from lexie_cloud.views import view # pylint: disable=import-outside-toplevel
