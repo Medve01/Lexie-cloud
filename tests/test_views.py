@@ -169,10 +169,13 @@ def test_google_post_sync(monkeypatch, client):
         return {
                     'username': username
                 }
-    def mock_sio_send_command(username, command):
+    def mock_sio_send_command(username, command, payload):
         global MOCK_CALLED
         MOCK_CALLED = {'mock_sio_send_command': [username, command]}
-        return [{
+        return {
+                    'agentUserId': username,
+                    'devices':
+                        [{
                             "id": "test_device",
                             "type": "action.devices.types.SWITCH",
                             "traits": [
@@ -196,6 +199,7 @@ def test_google_post_sync(monkeypatch, client):
                                 "swVersion": "1"
                             }
                         }]
+                }
     monkeypatch.setattr('lexie_cloud.views.check_token', mock_check_token)
     monkeypatch.setattr('lexie_cloud.views.sio_send_command', mock_sio_send_command)
     monkeypatch.setattr('lexie_cloud.users.get_user', mock_get_user)
@@ -247,7 +251,7 @@ def test_google_post_sync_offline(monkeypatch, client):
         return {
                     'username': username
                 }
-    def mock_sio_send_command(username, command):
+    def mock_sio_send_command(username, command, payload):
         raise InstanceOfflineException
     monkeypatch.setattr('lexie_cloud.views.check_token', mock_check_token)
     monkeypatch.setattr('lexie_cloud.views.sio_send_command', mock_sio_send_command)
@@ -270,7 +274,7 @@ def test_google_post_sync_noinstance(monkeypatch, client):
         return {
                     'username': username
                 }
-    def mock_sio_send_command(username, command):
+    def mock_sio_send_command(username, command, payload):
         raise Exception()
     monkeypatch.setattr('lexie_cloud.views.check_token', mock_check_token)
     monkeypatch.setattr('lexie_cloud.views.sio_send_command', mock_sio_send_command)
@@ -291,102 +295,6 @@ def test_google_post_sync_noinstance(monkeypatch, client):
             'devices': []
         },
         'requestId': '1111'
-    }
-
-def test_google_post_query(monkeypatch, client):
-    def mock_check_token():
-        return 'test_user'
-    def mock_action_query(params):
-        return {"on": True, "online": True}
-    def mock_get_method(module, name):
-        return mock_action_query
-    monkeypatch.setattr('lexie_cloud.views.check_token', mock_check_token)
-    monkeypatch.setattr('lexie_cloud.views.get_method', mock_get_method)
-    result = client.post("/",
-        json={
-            'requestId': '1111',
-            'inputs': [
-                {
-                    'intent': 'action.devices.QUERY',
-                    'payload': {
-                        'devices': [
-                            {
-                                'id': 'pc'
-                            }
-                        ]
-                    }
-                }
-            ]
-        }
-    )
-
-    assert result.json == {
-        'payload': {
-            'devices': {
-                'pc': {
-                    'on': True,
-                    'online': True
-                }
-            }
-        },
-        'requestId': '1111'
-    }
-
-def test_google_post_execute(monkeypatch, client):
-    def mock_get_token():
-        return 'test_user'
-    def mock_check_token():
-        return 'test_user'
-    def mock_action_execute(param1, param2, param3):
-        return {"on": True, "online": True}
-    def mock_get_method(module, name):
-        return mock_action_execute
-    monkeypatch.setattr('lexie_cloud.views.check_token', mock_check_token)
-    monkeypatch.setattr('lexie_cloud.views.get_method', mock_get_method)
-
-
-    monkeypatch.setattr('lexie_cloud.views.get_token', mock_get_token)
-    monkeypatch.setattr('lexie_cloud.views.check_token', mock_check_token)
-    result = client.post("/",
-        json={
-            'requestId': '1111',
-            'inputs': [
-                {
-                    'intent': 'action.devices.EXECUTE',
-                    'payload': {
-                        'commands': [
-                                {
-                                    'devices': [
-                                        {
-                                            'id': 'pc'
-                                        }
-                                    ],
-                                'execution': [
-                                    {
-                                        'command': 'action.devices.commands.OnOff',
-                                        'params': 'on'
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                }
-            ]
-        }
-    )
-    assert result.json == {
-        "payload":{
-            "commands":[
-                {
-                    "ids":[
-                        "pc"
-                    ],
-                    "on":True,
-                    "online":True
-                }
-            ]
-        },
-        "requestId":"1111"
     }
 
 

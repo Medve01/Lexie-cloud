@@ -1,4 +1,3 @@
-import importlib
 import json
 import os
 import random
@@ -246,65 +245,22 @@ def fulfillment(): # pylint: disable=too-many-locals,too-many-branches
 
     # Let's check inputs array. Why it's array? Is it possible that it will contain multiple objects? I don't know.
     inputs = r['inputs']
-    for i in inputs:
-        intent = i['intent']
-        # Sync intent, need to response with devices list
-        if intent == "action.devices.SYNC":
-            result['payload'] = {"agentUserId": user_id, "devices": []}
-            # Loading user info
-            user = lexie_cloud.users.get_user(user_id)
-            # Loading each device available for this user
-            try:
-                devices = sio_send_command(user['username'], 'SYNC')
-            except InstanceOfflineException:
-                return 'Offline', 504
-            except: # pylint: disable=bare-except
-                devices = []
-            result['payload']['devices'] = devices
-
-        # Query intent, need to response with current device status
-        if intent == "action.devices.QUERY":
-            result['payload'] = {}
-            result['payload']['devices'] = {}
-            for device in i['payload']['devices']:
-                device_id = device['id']
-                custom_data = device.get("customData", None)
-                # Load module for this device
-                device_module = importlib.import_module('lexie_cloud.devices.' + device_id)
-                # Call query method for this device
-                query_method = get_method(device_module, device_id + "_query")
-                result['payload']['devices'][device_id] = query_method(custom_data)
-
-        # Execute intent, need to execute some action
-        if intent == "action.devices.EXECUTE":
-            result['payload'] = {}
-            result['payload']['commands'] = []
-            for command in i['payload']['commands']:
-                for device in command['devices']:
-                    device_id = device['id']
-                    custom_data = device.get("customData", None)
-                    # Load module for this device
-                    device_module = importlib.import_module('lexie_cloud.devices.' + device_id)
-                    # Call execute method for this device for every execute command
-                    action_method = get_method(device_module, device_id + "_action")
-                    for execution in command['execution']:
-                        command = execution['command']
-                        params = execution.get("params", None)
-                        action_result = action_method(custom_data, command, params)
-                        action_result['ids'] = [device_id]
-                        result['payload']['commands'].append(action_result)
-
-        # Disconnect intent, need to revoke token
-        if intent == "action.devices.DISCONNECT":
+    for _input in inputs:
+        if _input['intent'] == "action.devices.DISCONNECT":
             access_token = get_token()
             access_token_file = os.path.join(current_app.config['TOKENS_DIRECTORY'], access_token)
             if os.path.isfile(access_token_file) and os.access(access_token_file, os.R_OK):
                 os.remove(access_token_file)
                 # logger.debug("token %s revoked", access_token, extra={'remote_addr': request.remote_addr, 'user': user_id})
             return {}
-
-    # logger.debug("response: \r\n%s", json.dumps(result, indent=4), extra={'remote_addr': request.remote_addr, 'user': user_id})
+        try:
+            result['payload'] = sio_send_command(username=user_id, command=_input['intent'], payload=_input.get('payload', None))
+        except InstanceOfflineException:
+            return "Offline", 504
+        except: # pylint: disable=bare-except
+            result['payload'] = {'devices': [], 'agentUserId': user_id}
     return jsonify(result)
+
 
 @view.route('/connect-instance', methods=['POST'])
 def connect_instance():
@@ -328,7 +284,7 @@ def connect_instance():
     instance = lexie_cloud.users.add_lexie_instance(username=request_data['username'], lexie_instance_name=request_data['name'])
     return jsonify({'instance_id': instance['id'], 'apikey': instance['apikey']})
 
-def sio_send_command(username, command, payload=None):
+def sio_send_command(username, command, payload):
     """Sends a command through SocketIO to a connected local Lexie instance
 
     Args:
