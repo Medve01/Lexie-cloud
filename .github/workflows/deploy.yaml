@@ -44,7 +44,7 @@ jobs:
     needs:
       - ci
     outputs:
-      imagename: {{ steps.docker_build.outputs.image }}
+      imagename: ${{ steps.docker_build.outputs.image }}
     steps:
 
     - name: Check out code
