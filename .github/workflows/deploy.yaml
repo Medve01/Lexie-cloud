@@ -43,7 +43,8 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - ci
-   
+    outputs:
+      imagename: {{ steps.docker_build.outputs.image }}
     steps:
 
     - name: Check out code
@@ -60,16 +61,40 @@ jobs:
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v1
 
-    - name: Generate build number
-      uses: einaregilsson/build-number@v3
-      with:
-        token: ${{secrets.github_token}}
   
     - name: Build, tag, and push image to Amazon ECR
+      id: docker_build
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         ECR_REPOSITORY: lexie-cloud
-        IMAGE_TAG: ${{env.BUILD_NUMBER}}
+        IMAGE_TAG: ${{env.GITHUB_RUN_ID}}
       run: |
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+  deploy-prod:
+    name: Deploy to production
+    runs-on: 'ubuntu-latest'
+    environment: 'PROD'
+    needs: [ci, build]
+    steps:
+    - name: Download task definition
+      run: |
+        aws ecs describe-task-definition --task-definition service --query taskDefinition > task-definition.json
+
+    - name: Fill in the new image ID in the Amazon ECS task definition
+      id: task-def
+      uses: aws-actions/amazon-ecs-render-task-definition@v1
+      with:
+        task-definition: task-definition.json
+        container-name: application
+        image: ${{ needs.build.outputs.imagename }}
+
+    - name: Deploy Amazon ECS task definition
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      with:
+        task-definition: ${{ steps.task-def.outputs.task-definition }}
+        service: ${{ secrets.ECS_SERVICE }}
+        cluster: ${{ secrets.ECS_CLUSTER }}
+        wait-for-service-stability: true
