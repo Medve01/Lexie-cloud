@@ -69,6 +69,7 @@ jobs:
         ECR_REPOSITORY: lexie-cloud
         IMAGE_TAG: ${{env.GITHUB_RUN_ID}}
       run: |
+        echo "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
         echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
