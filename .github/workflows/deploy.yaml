@@ -93,7 +93,7 @@ jobs:
       id: imagename
       run: |
         aws ecs describe-task-definition --task-definition lexie-cloud --query taskDefinition > task-definition.json
-        echo "::set-output name=image::"${{ needs.build.outputs.registry }}/lexie-cloud:${{ needs.build.outputs.buildid }}
+        echo "::set-output name=image::"149600605513.dkr.ecr.us-east-1.amazonaws.com/lexie-cloud:${{ needs.build.outputs.buildid }}
 
     - name: Fill in the new image ID in the Amazon ECS task definition
       id: task-def
