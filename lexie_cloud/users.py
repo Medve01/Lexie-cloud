@@ -6,7 +6,7 @@ import botocore
 import tinydb
 from shortuuid import uuid
 
-from lexie_cloud import config
+from lexie_cloud.config import S3_BUCKET_NAME
 from lexie_cloud.exceptions import (InstanceAuthenticationFailureException,
                                     InvalidUserNamePasswordException,
                                     UserAlreadyExistsException,
@@ -16,39 +16,54 @@ from lexie_cloud.extensions import logger
 DATABASE_FILE='users.json'
 user_table = tinydb.TinyDB(DATABASE_FILE).table('users')
 lexie_instance_table  = tinydb.TinyDB(DATABASE_FILE).table('lexie_instances')
+invitations_table = tinydb.TinyDB(DATABASE_FILE).table('invitations')
+
+def use_invitation(invitation_code):
+    """[summary]
+
+    Args:
+        invitation_code (str): the invitation code the user submitted
+
+    Returns:
+        bool: validation success. If true, the code is removed from the database
+    """
+    results = invitations_table.search(tinydb.Query().code==invitation_code)
+    if results is None or results == []:
+        return False
+    invitations_table.remove(tinydb.Query().code == invitation_code)
+    return True
 
 def save_db_to_s3():
     """Saves our tiny database to AWS S3
     """
-    bucket_name = config.S3_BUCKET_NAME
+    bucket_name = S3_BUCKET_NAME
     s3client = boto3.client('s3')
     s3client.upload_file(DATABASE_FILE, bucket_name, DATABASE_FILE)
 
 def load_db_from_s3(): # pragma: nocover
     """Loads our tiny db from AWS S3"""
-    bucket_name = config.S3_BUCKET_NAME
     s3client = boto3.resource('s3')
 
     try:
-        s3client.Bucket(bucket_name).download_file(DATABASE_FILE, DATABASE_FILE)
+        s3client.Bucket(S3_BUCKET_NAME).download_file(DATABASE_FILE, DATABASE_FILE)
         logger.info('Database loaded from S3')
     except botocore.exceptions.ClientError as e: # pylint: disable=invalid-name
         if e.response['Error']['Code'] == "404":
-            print("Database file not found in S3, starting with empty one.")
+            logger.warning("Database file not found in S3, starting with empty one.")
         else:
+            logger.warning('Found a local database file, using that.')
             if not os.path.exists(DATABASE_FILE):
                 raise
     except botocore.exceptions.NoCredentialsError:
         if not os.path.exists(DATABASE_FILE):
             raise
 
-def add_user(username, password, lexie_url, api_key):
+def add_user(username, password):
     """Adds a user to the database. raises UserAlreadyExistsException if username is not unique
 
     Args:
         username (str): user logon name
         password (str): password
-        lexie_url (str): URL of the local Lexie instance
     """
     user = user_table.search(tinydb.Query().username == username)
     if user is not None and len(user) > 0:
@@ -57,8 +72,6 @@ def add_user(username, password, lexie_url, api_key):
     user_dict = {
         'username': username,
         'password': bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8'),
-        'lexie_url': lexie_url,
-        'api_key': api_key
     }
     user_table.insert(user_dict)
 

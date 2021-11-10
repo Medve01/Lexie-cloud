@@ -14,13 +14,6 @@ def test_get_root(client):
     result = client.get("/")
     assert result.status_code == 200
 
-def test_get_user(monkeypatch):
-    monkeypatch.setattr('lexie_cloud.views.config.USERS_DIRECTORY', './tests/fixtures/users/')
-    result = lexie_cloud.views.get_user('notexisting')
-    assert result is None
-    result = lexie_cloud.views.get_user('test_user')
-    assert result == {'password': 'test', 'devices': ['pc']}
-
 def test_get_token(monkeypatch, app):
     def mock_get_header(headername):
         return 'bearer token'
@@ -34,24 +27,27 @@ def test_get_token(monkeypatch, app):
         result = lexie_cloud.views.get_token()
         assert result is None
 
-def test_check_token(monkeypatch):
+def test_check_token(monkeypatch, app):
     def mock_get_token():
         return 'TEST_TOKEN'
     def mock_get_token_invalid():
         return 'INVALID_TOKEN'
-    monkeypatch.setattr('lexie_cloud.views.config.TOKENS_DIRECTORY', './tests/fixtures/tokens/')
-    monkeypatch.setattr('lexie_cloud.views.get_token', mock_get_token)
-    result = lexie_cloud.views.check_token()
-    assert result == '{}'
-    monkeypatch.setattr('lexie_cloud.views.get_token', mock_get_token_invalid)
-    result = lexie_cloud.views.check_token()
-    assert result is None
+    # monkeypatch.setattr('lexie_cloud.views.config.TOKENS_DIRECTORY', './tests/fixtures/tokens/')
+    with app.app_context():
+        app.config['TOKENS_DIRECTORY'] = './tests/fixtures/tokens/'
+        monkeypatch.setattr('lexie_cloud.views.get_token', mock_get_token)
+        result = lexie_cloud.views.check_token()
+        assert result == '{}'
+        monkeypatch.setattr('lexie_cloud.views.get_token', mock_get_token_invalid)
+        result = lexie_cloud.views.check_token()
+        assert result is None
 
-def test_get_device(monkeypatch):
-    monkeypatch.setattr('lexie_cloud.views.config.DEVICES_DIRECTORY', './tests/fixtures/devices/')
-    result = lexie_cloud.views.get_device('invalid device')
-    assert result is None
-    result = lexie_cloud.views.get_device('test_device')
+def test_get_device(monkeypatch, app):
+    with app.app_context():
+        app.config['DEVICES_DIRECTORY'] = './tests/fixtures/devices/'
+        result = lexie_cloud.views.get_device('invalid device')
+        assert result is None
+        result = lexie_cloud.views.get_device('test_device')
     assert result ==    {
                             "id": "test_device",
                             "type": "action.devices.types.SWITCH",
@@ -96,65 +92,65 @@ def test_auth_post_invalid(client):
     assert result.status_code == 400
 
 def test_auth_post_logon(monkeypatch, client, app):
-    def mock_get_user_none(username):
-        return None
-    def mock_get_user_ok(username):
+    def mock_authenticate_user_none(username, password):
+        raise InvalidUserNamePasswordException()
+    def mock_authenticate_user_ok(username, password):
         return {
-                    "password": "test",
-                    "devices": [
-                        "pc"
-                    ]
+                    'username': 'test_user',
+
                 }
-    monkeypatch.setattr('lexie_cloud.views.config.CLIENT_ID', 'TEST_CLIENT_ID')
-    monkeypatch.setattr('lexie_cloud.views.get_user', mock_get_user_none)
-    result = client.post("/auth/",
-        query_string={'state':'state','response_type':'code','client_id': 'TEST_CLIENT_ID'},
-        data={'username': 'test_user', 'password': 'test'}
-    )
-    assert result.status_code == 200
-    assert str(result.data).find('Invalid username or password') > -1
-    monkeypatch.setattr('lexie_cloud.views.get_user', mock_get_user_ok)
-    result = client.post("/auth/",
-        query_string={'state':'state','response_type':'code','client_id': 'TEST_CLIENT_ID', 'redirect_uri': 'http://dontgo.here/'},
-        data={'username': 'test_user', 'password': 'test'},
-    )
+    with app.app_context():
+        app.config['CLIENT_ID'] = 'TEST_CLIENT_ID'
+        monkeypatch.setattr('lexie_cloud.users.authenticate_user', mock_authenticate_user_none)
+        result = client.post("/auth/",
+            query_string={'state':'state','response_type':'code','client_id': 'TEST_CLIENT_ID'},
+            data={'username': 'test_user', 'password': 'test'}
+        )
+        assert result.status_code == 200
+        assert str(result.data).find('Invalid username or password') > -1
+        monkeypatch.setattr('lexie_cloud.users.authenticate_user', mock_authenticate_user_ok)
+        result = client.post("/auth/",
+            query_string={'state':'state','response_type':'code','client_id': 'TEST_CLIENT_ID', 'redirect_uri': 'http://dontgo.here/'},
+            data={'username': 'test_user', 'password': 'test'},
+        )
     assert result.status_code == 302
 
-def test_token_post(monkeypatch, client):
+def test_token_post(monkeypatch, client, app):
     result = client.post("/token/")
     assert result.status_code == 400
-    monkeypatch.setattr('lexie_cloud.views.config.CLIENT_SECRET', 'test_client_secret')
-    monkeypatch.setattr('lexie_cloud.views.config.CLIENT_ID', 'test_client_id')
-    monkeypatch.setattr('lexie_cloud.views.LAST_CODE', 'test_code')
-    monkeypatch.setattr('lexie_cloud.views.LAST_CODE_TIME', time())
-    monkeypatch.setattr('lexie_cloud.views.config.TOKENS_DIRECTORY', './tests/fixtures/tokens/')
-    monkeypatch.setattr('lexie_cloud.views.LAST_CODE_USER', 'test_user')
-    result = client.post("/token/",
-        data={
-                'client_secret' : 'test_client_secret',
-                'client_id': 'test_client_id',
-                'code': 'test_code',
-            }
-    )
-    assert result.status_code == 200
-    assert 'access_token' in result.json.keys()
-    result = client.post("/token/",
-        data={
-                'client_secret' : 'test_client_secret',
-                'client_id': 'test_client_id',
-                'code': 'invalid_test_code',
-            }
-    )
-    assert result.status_code == 403
-    assert result.data == b'Invalid code'
-    monkeypatch.setattr('lexie_cloud.views.LAST_CODE_TIME', time() - 11)
-    result = client.post("/token/",
-        data={
-                'client_secret' : 'test_client_secret',
-                'client_id': 'test_client_id',
-                'code': 'test_code',
-            }
-    )
+    with app.app_context():
+        app.config['CLIENT_SECRET'] = 'test_client_secret'
+        app.config['CLIENT_ID'] = 'test_client_id'
+        app.config['TOKENS_DIRECTORY'] = './tests/fixtures/tokens/'
+        monkeypatch.setattr('lexie_cloud.views.LAST_CODE', 'test_code')
+        monkeypatch.setattr('lexie_cloud.views.LAST_CODE_TIME', time())
+        monkeypatch.setattr('lexie_cloud.views.LAST_CODE_USER', 'test_user')
+        result = client.post("/token/",
+            data={
+                    'client_secret' : 'test_client_secret',
+                    'client_id': 'test_client_id',
+                    'code': 'test_code',
+                }
+        )
+        assert result.status_code == 200
+        assert 'access_token' in result.json.keys()
+        result = client.post("/token/",
+            data={
+                    'client_secret' : 'test_client_secret',
+                    'client_id': 'test_client_id',
+                    'code': 'invalid_test_code',
+                }
+        )
+        assert result.status_code == 403
+        assert result.data == b'Invalid code'
+        monkeypatch.setattr('lexie_cloud.views.LAST_CODE_TIME', time() - 11)
+        result = client.post("/token/",
+            data={
+                    'client_secret' : 'test_client_secret',
+                    'client_id': 'test_client_id',
+                    'code': 'test_code',
+                }
+        )
     assert result.status_code == 403
     assert result.data == b'Code is too old'
 
@@ -171,13 +167,12 @@ def test_google_post_sync(monkeypatch, client):
         return 'test_user'
     def mock_get_user(username):
         return {
-                    "password": "test",
-                    "devices": [
-                        "pc"
-                    ]
+                    'username': username
                 }
-    def mock_get_device(device_id):
-        return {
+    def mock_sio_send_command(username, command):
+        global MOCK_CALLED
+        MOCK_CALLED = {'mock_sio_send_command': [username, command]}
+        return [{
                             "id": "test_device",
                             "type": "action.devices.types.SWITCH",
                             "traits": [
@@ -200,10 +195,10 @@ def test_google_post_sync(monkeypatch, client):
                                 "hwVersion": "1",
                                 "swVersion": "1"
                             }
-                        }
+                        }]
     monkeypatch.setattr('lexie_cloud.views.check_token', mock_check_token)
-    monkeypatch.setattr('lexie_cloud.views.get_device', mock_get_device)
-    monkeypatch.setattr('lexie_cloud.views.get_user', mock_get_user)
+    monkeypatch.setattr('lexie_cloud.views.sio_send_command', mock_sio_send_command)
+    monkeypatch.setattr('lexie_cloud.users.get_user', mock_get_user)
     result = client.post("/",
         json={
             'requestId': '1111',
@@ -241,6 +236,59 @@ def test_google_post_sync(monkeypatch, client):
                     'willReportState': False
                 }
             ]
+        },
+        'requestId': '1111'
+    }
+
+def test_google_post_sync_offline(monkeypatch, client):
+    def mock_check_token():
+        return 'test_user'
+    def mock_get_user(username):
+        return {
+                    'username': username
+                }
+    def mock_sio_send_command(username, command):
+        raise InstanceOfflineException
+    monkeypatch.setattr('lexie_cloud.views.check_token', mock_check_token)
+    monkeypatch.setattr('lexie_cloud.views.sio_send_command', mock_sio_send_command)
+    monkeypatch.setattr('lexie_cloud.users.get_user', mock_get_user)
+
+    result = client.post("/",
+        json={
+            'requestId': '1111',
+            'inputs': [
+                {'intent': 'action.devices.SYNC'}
+            ]
+        }
+    )
+    assert result.status_code == 504
+
+def test_google_post_sync_noinstance(monkeypatch, client):
+    def mock_check_token():
+        return 'test_user'
+    def mock_get_user(username):
+        return {
+                    'username': username
+                }
+    def mock_sio_send_command(username, command):
+        raise Exception()
+    monkeypatch.setattr('lexie_cloud.views.check_token', mock_check_token)
+    monkeypatch.setattr('lexie_cloud.views.sio_send_command', mock_sio_send_command)
+    monkeypatch.setattr('lexie_cloud.users.get_user', mock_get_user)
+
+    result = client.post("/",
+        json={
+            'requestId': '1111',
+            'inputs': [
+                {'intent': 'action.devices.SYNC'}
+            ]
+        }
+    )
+    assert result.status_code == 200
+    assert result.json == {
+        'payload': {
+            'agentUserId': 'test_user',
+            'devices': []
         },
         'requestId': '1111'
     }
@@ -526,3 +574,40 @@ def test_sio_test_send_command(monkeypatch, client, app):
 def test_sio_command_callback():
     lexie_cloud.views.sio_command_callback({'request_id': 'TESTID', 'payload': {'success': True}})
     assert lexie_cloud.views.SIO_RESPONSE_DATA['TESTID'] == {'success': True}
+
+def test_register_missing_form_elements(monkeypatch, client):
+    result = client.post('/register', data={
+        'email': 'tes@test.net',
+    })
+    assert result.status_code == 400
+
+def test_register_invalid_invitation(monkeypatch, client):
+    def mock_use_invitation(invitation):
+        return False
+    monkeypatch.setattr('lexie_cloud.users.use_invitation', mock_use_invitation)
+    result = client.post('/register', data={
+        'email': 'test@test.com',
+        'password': 'password',
+        'repassword': 'password',
+        'invitation': 'invalid_invitation'
+    })
+    assert result.status_code == 200
+    assert result.data == b'Invalid invitation code'
+
+def test_register_success(monkeypatch, client):
+    def mock_use_invitation(invitation):
+        return True
+    def mock_add_user(username, password):
+        global MOCK_CALLED
+        MOCK_CALLED = 'mock_add_user'
+    monkeypatch.setattr('lexie_cloud.users.use_invitation', mock_use_invitation)
+    monkeypatch.setattr('lexie_cloud.users.add_user', mock_add_user)
+    result = client.post('/register', data={
+        'email': 'test@test.com',
+        'password': 'password',
+        'repassword': 'password',
+        'invitation': 'invitation'
+    })
+    assert result.status_code == 200
+    assert result.data == b'Registration successful'
+    assert MOCK_CALLED == 'mock_add_user'

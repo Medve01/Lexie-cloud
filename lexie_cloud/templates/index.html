@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta id="viewport" name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lexie Smarthome Cloud</title>        
+<link rel="stylesheet" href="/css/style.css">
+<head>
+    <script type="text/javascript">
+           function Validate() {
+               var SecPass = document.getElementById("password").value;
+               var confirmSecPass = document.getElementById("repassword").value;
+               if (SecPass != confirmSecPass) {
+                   alert("You first Passwords is not similar with second password. Please enter same password in both");
+                   return false;
+               }
+               return true;
+           }
+       </script>
+       </head>
+   <body>
+</head>
+<body>
+    <h1>Welcome to Lexie Smarthome Cloud!</h1>
+    Currently the system is invitation-only. If you have an invitation code, you can register a new user here:
+
+<form method="POST" action="/register">
+    Email:<br/>
+    <input type="email" name="email" size="50" required/><br/>
+    Password:<br/>
+    <input type="password" name="password" id="password" size="20" minlength="10" required/><br/><br/>
+    Repeat password:<br/>
+    <input type="password" name="repassword" id="repassword" size="20" required/><br/><br/>
+    Invitation code:<br/>
+    <input type="text" name="invitation" size="36" minlength="36" maxlength="36" required/><br/>
+
+    <input type="submit" name="register" value="Register"onclick="return Validate()">
+</form>
+</body>
+</html>

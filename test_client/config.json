@@ -1,5 +1,5 @@
 {
-    "lexie_cloud_url": "http://localhost:5001",
+    "lexie_cloud_url": "http://127.0.0.1:5001",
     "lexie_auth": {
         "instance_id": "k5CeKUMnSEUjYeNVM8moK7",
         "apikey": "ZuAoWQ4cxRc3ohh4gfH7NmHpLWVeXJAu5DoJMXGspbp7hkpJu8zWgBfSEmzQpcC7PQNmAyEXisPnfQ9HwcqPk8Ux"

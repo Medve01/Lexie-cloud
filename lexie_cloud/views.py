@@ -8,13 +8,12 @@ import urllib
 from typing import Any, Dict
 
 # import requests
-from flask import (Blueprint, jsonify, redirect, render_template, request,
-                   send_from_directory)
+from flask import (Blueprint, current_app, jsonify, redirect, render_template,
+                   request, send_from_directory)
 from flask_socketio import disconnect
 from shortuuid import uuid
 
 import lexie_cloud.users
-from lexie_cloud import config
 from lexie_cloud.exceptions import (CommandTimeoutException,
                                     InstanceAuthenticationFailureException,
                                     InstanceOfflineException,
@@ -33,24 +32,24 @@ SIO_SEND_MAX_WAIT_ITERATIONS = 1000
 
 
 # Function to load user info
-def get_user(username):
-    """[summary]
+# def get_user(username):
+#     """[summary]
 
-    Args:
-        username ([type]): [description]
+#     Args:
+#         username ([type]): [description]
 
-    Returns:
-        [type]: [description]
-    """
-    filename = os.path.join(config.USERS_DIRECTORY, username + ".json")
-    if os.path.isfile(filename) and os.access(filename, os.R_OK):
-        with open(filename, mode='r', encoding='UTF-8') as f:
-            text = f.read()
-            data = json.loads(text)
-            return data
-    else:
-        # logger.warning("user not found", extra={'remote_addr': request.remote_addr, 'user': username})
-        return None
+#     Returns:
+#         [type]: [description]
+#     """
+#     filename = os.path.join(current_app.config['USERS_DIRECTORY'])
+#     if os.path.isfile(filename) and os.access(filename, os.R_OK):
+#         with open(filename, mode='r', encoding='UTF-8') as f:
+#             text = f.read()
+#             data = json.loads(text)
+#             return data
+#     else:
+#         # logger.warning("user not found", extra={'remote_addr': request.remote_addr, 'user': username})
+#         return None
 
 # Function to retrieve token from header
 def get_token():
@@ -74,7 +73,7 @@ def check_token():
         [type]: [description]
     """
     access_token = get_token()
-    access_token_file = os.path.join(config.TOKENS_DIRECTORY, access_token)
+    access_token_file = os.path.join(current_app.config['TOKENS_DIRECTORY'], access_token)
     if os.path.isfile(access_token_file) and os.access(access_token_file, os.R_OK):
         with open(access_token_file, mode='r', encoding='UTF-8') as f:
             return f.read()
@@ -91,7 +90,7 @@ def get_device(device_id):
     Returns:
         [type]: [description]
     """
-    filename = os.path.join(config.DEVICES_DIRECTORY, device_id + ".json")
+    filename = os.path.join(current_app.config['DEVICES_DIRECTORY'], device_id + ".json")
     if os.path.isfile(filename) and os.access(filename, os.R_OK):
         with open(filename, mode='r', encoding='UTF-8') as f:
             text = f.read()
@@ -149,13 +148,13 @@ def auth(): # pylint: disable=inconsistent-return-statements
         or "response_type" not in request.args
         or request.args["response_type"] != "code"
         or "client_id" not in request.args
-        or request.args["client_id"] != config.CLIENT_ID):
+        or request.args["client_id"] != current_app.config['CLIENT_ID']):
             # logger.warning("invalid auth request", extra={'remote_addr': request.remote_addr, 'user': request.form['username']})
             return "Invalid request", 400
         # Check login and password
-        user = get_user(request.form["username"])
-        if user is None or user["password"] != request.form["password"]:
-            # logger.warning("invalid password", extra={'remote_addr': request.remote_addr, 'user': request.form['username']})
+        try:
+            lexie_cloud.users.authenticate_user(username=request.form["username"], password=request.form["password"])
+        except InvalidUserNamePasswordException:
             return render_template('login.html', login_failed=True)
 
         # Generate random code and remember this user and time
@@ -165,7 +164,7 @@ def auth(): # pylint: disable=inconsistent-return-statements
 
         params = {'state': request.args['state'],
                   'code': LAST_CODE,
-                  'client_id': config.CLIENT_ID}
+                  'client_id': current_app.config['CLIENT_ID']}
         # logger.info("generated code", extra={'remote_addr': request.remote_addr, 'user': request.form['username']})
         return redirect(request.args["redirect_uri"] + '?' + urllib.parse.urlencode(params))
 
@@ -179,9 +178,9 @@ def token():
     """
     global LAST_CODE, LAST_CODE_USER, LAST_CODE_TIME # pylint: disable=global-statement,global-variable-not-assigned
     if ("client_secret" not in request.form
-    or request.form["client_secret"] != config.CLIENT_SECRET
+    or request.form["client_secret"] != current_app.config['CLIENT_SECRET']
     or "client_id" not in request.form
-    or request.form["client_id"] != config.CLIENT_ID
+    or request.form["client_id"] != current_app.config['CLIENT_ID']
     or "code" not in request.form):
         # logger.warning("invalid token request", extra={'remote_addr': request.remote_addr, 'user': LAST_CODE_USER})
         return "Invalid request", 400
@@ -195,12 +194,33 @@ def token():
         return "Code is too old", 403
     # Generate and save random token with username
     access_token = random_string(32)
-    access_token_file = os.path.join(config.TOKENS_DIRECTORY, access_token)
+    access_token_file = os.path.join(current_app.config['TOKENS_DIRECTORY'], access_token)
     with open(access_token_file, mode='wb') as f:
         f.write(LAST_CODE_USER.encode('utf-8'))
     # logger.info("access granted", extra={'remote_addr': request.remote_addr, 'user': LAST_CODE_USER})
     # Return just token without any expiration time
     return jsonify({'access_token': access_token})
+
+
+# user registration endpoint
+
+@view.route('/register', methods = ['POST'])
+def register():
+    """
+    User registration
+    """
+    if (
+        request.form.get('email') is None or request.form.get('email') == '' # pylint: disable=too-many-boolean-expressions
+        or request.form.get('password') is None or request.form.get('password') == ''
+        or request.form.get('repassword') is None or request.form.get('repassword') == ''
+        or request.form.get('invitation') is None or request.form.get('invitation') == ''
+        or request.form.get('password') != request.form.get('repassword')
+    ):
+        return jsonify("Invalid form data"), 400
+    if lexie_cloud.users.use_invitation(request.form.get('invitation')):
+        lexie_cloud.users.add_user(username=request.form.get('email'), password=request.form.get('password'))
+        return 'Registration successful'
+    return 'Invalid invitation code'
 
 # Main URL to interact with Google requests
 @view.route('/', methods=['GET', 'POST'])
@@ -212,7 +232,7 @@ def fulfillment(): # pylint: disable=too-many-locals,too-many-branches
     """
     # Google will send POST requests only, some it's just placeholder for GET
     if request.method == 'GET':
-        return "Your smart home is ready."
+        return render_template('index.html')
 
     # Check token and get username
     user_id = check_token()
@@ -232,12 +252,15 @@ def fulfillment(): # pylint: disable=too-many-locals,too-many-branches
         if intent == "action.devices.SYNC":
             result['payload'] = {"agentUserId": user_id, "devices": []}
             # Loading user info
-            user = get_user(user_id)
+            user = lexie_cloud.users.get_user(user_id)
             # Loading each device available for this user
-            for device_id in user['devices']:
-                # Loading device info
-                device = get_device(device_id)
-                result['payload']['devices'].append(device)
+            try:
+                devices = sio_send_command(user['username'], 'SYNC')
+            except InstanceOfflineException:
+                return 'Offline', 504
+            except: # pylint: disable=bare-except
+                devices = []
+            result['payload']['devices'] = devices
 
         # Query intent, need to response with current device status
         if intent == "action.devices.QUERY":
@@ -274,7 +297,7 @@ def fulfillment(): # pylint: disable=too-many-locals,too-many-branches
         # Disconnect intent, need to revoke token
         if intent == "action.devices.DISCONNECT":
             access_token = get_token()
-            access_token_file = os.path.join(config.TOKENS_DIRECTORY, access_token)
+            access_token_file = os.path.join(current_app.config['TOKENS_DIRECTORY'], access_token)
             if os.path.isfile(access_token_file) and os.access(access_token_file, os.R_OK):
                 os.remove(access_token_file)
                 # logger.debug("token %s revoked", access_token, extra={'remote_addr': request.remote_addr, 'user': user_id})
@@ -305,7 +328,7 @@ def connect_instance():
     instance = lexie_cloud.users.add_lexie_instance(username=request_data['username'], lexie_instance_name=request_data['name'])
     return jsonify({'instance_id': instance['id'], 'apikey': instance['apikey']})
 
-def sio_send_command(username, command, payload):
+def sio_send_command(username, command, payload=None):
     """Sends a command through SocketIO to a connected local Lexie instance
 
     Args:
@@ -323,8 +346,9 @@ def sio_send_command(username, command, payload):
     request_id = uuid()
     send_data = {
         'request_id': request_id,
-        'payload': payload
     }
+    if payload is not None:
+        send_data['payload'] = payload
     lexie_instance = lexie_cloud.users.get_lexie_instance(username)
     if lexie_instance is None:
         raise Exception('No Lexie Instance registered for user')

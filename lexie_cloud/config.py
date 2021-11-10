@@ -1,15 +1,27 @@
-# import logging
+import os
 
-CLIENT_ID = "YOUR_SMART_HOME_NAME"
-CLIENT_SECRET = "YOUR_SECRET" # nosecurity # this is throwaway
-API_KEY = "YOUR_API_KEY"
-USERS_DIRECTORY = "/home/google_home/users"
-TOKENS_DIRECTORY = "/home/google_home/tokens"
-DEVICES_DIRECTORY = "/home/google_home/devices"
+import boto3
+import botocore
+
+from lexie_cloud.extensions import logger
+
 S3_BUCKET_NAME = "lexie_cloud_data"
+CONFIG_FILE = 'config.json'
 
-# Uncomment to enable logging
-#LOG_FILE = "/var/log/google-home.log"
-#LOG_LEVEL = logging.DEBUG
-#LOG_FORMAT = "%(asctime)s %(remote_addr)s %(user)s %(message)s"
-#LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+def load_config_from_s3(): # pragma: nocover
+    """Loads our tiny db from AWS S3"""
+    bucket_name = S3_BUCKET_NAME
+    s3client = boto3.resource('s3')
+    try:
+        s3client.Bucket(bucket_name).download_file(CONFIG_FILE, CONFIG_FILE)
+        logger.info('Database loaded from S3')
+    except botocore.exceptions.ClientError as e: # pylint: disable=invalid-name
+        if e.response['Error']['Code'] == "404":
+            logger.warning("Database file not found in S3, starting with empty one.")
+        else:
+            logger.warning('Found a local database file, using that.')
+            if not os.path.exists(CONFIG_FILE):
+                raise
+    except botocore.exceptions.NoCredentialsError:
+        if not os.path.exists(CONFIG_FILE):
+            raise
