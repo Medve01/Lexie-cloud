@@ -44,7 +44,8 @@ jobs:
     needs:
       - ci
     outputs:
-      imagename: ${{ steps.docker_build.outputs.image }}
+      buildid: ${{ steps.docker_build.outputs.buildid }}
+      registry: ${{ steps.docker_build.outputs.registry }}
     steps:
 
     - name: Check out code
@@ -71,7 +72,8 @@ jobs:
       run: |
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$GITHUB_RUN_ID .
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$GITHUB_RUN_ID
-        echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$GITHUB_RUN_ID"
+        echo "::set-output name=registry::$ECR_REGISTRY"
+        echo "::set-output name=buildid::$GITHUB_RUN_ID"
 
   deploy-prod:
     name: Deploy to production
@@ -88,8 +90,10 @@ jobs:
         aws-region: us-east-1
 
     - name: Download task definition
+      id: imagename
       run: |
         aws ecs describe-task-definition --task-definition lexie-cloud --query taskDefinition > task-definition.json
+        echo "::set-output name=image::"${{ needs.build.outputs.registry }}/lexie-cloud:${{ needs.build.outputs.buildid }}
 
     - name: Fill in the new image ID in the Amazon ECS task definition
       id: task-def
@@ -97,7 +101,7 @@ jobs:
       with:
         task-definition: task-definition.json
         container-name: lexie-cloud
-        image: ${{ needs.build.outputs.imagename }}
+        image: ${{ steps.imagename.outputs.image }}
 
     - name: Deploy Amazon ECS task definition
       uses: aws-actions/amazon-ecs-deploy-task-definition@v1
