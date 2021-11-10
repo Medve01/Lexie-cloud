@@ -32,8 +32,6 @@ jobs:
         uses: abatilo/actions-poetry@v2.0.0
         with:
           poetry-version: ${{ matrix.poetry-version }}
-      - name: Memcached Service
-        uses: niden/actions-memcached@v7
       - name: Install project
         run: poetry install
       - name: isort check

@@ -1,4 +1,5 @@
 import pytest
+import os
 
 import boto3
 import json
@@ -18,6 +19,8 @@ TEST_AUTH = 'test_instance:blarftegh'
 def app():
     """Creates a Flask application for testing
     """
+    cwd = os.getcwd()
+    os.chdir(cwd + '/lexie_cloud')
     conn = boto3.resource('s3', region_name='us-east-1')
     conn.create_bucket(Bucket=S3_BUCKET_NAME)
     mock_filename = 'config.json'
@@ -30,7 +33,10 @@ def app():
             "TOKENS_DIRECTORY" : "./tests/fixtures/tokens",
             "DEVICES_DIRECTORY" : "./tests/fixtures/devices"
         }))
+    s3client = boto3.client('s3')
+    s3client.upload_file(mock_filename, S3_BUCKET_NAME, mock_filename)
     _app = create_app()
+    os.chdir(cwd)
     return _app
 
 @pytest.fixture
