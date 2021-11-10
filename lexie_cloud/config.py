@@ -5,7 +5,7 @@ import botocore
 
 from lexie_cloud.extensions import logger
 
-S3_BUCKET_NAME = "lexie_cloud_data"
+S3_BUCKET_NAME = "lexie-cloud-data"
 CONFIG_FILE = 'config.json'
 
 def load_config_from_s3(): # pragma: nocover
