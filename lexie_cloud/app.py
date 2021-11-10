@@ -15,7 +15,10 @@ def create_app():
     """
     _app = Flask(__name__)
     config.load_config_from_s3()
-    _app.config.from_json('config.json')
+    try:
+        _app.config.from_json('config.json')
+    except:# pylint: disable=bare-except # pragma: nocover
+        print('Failed to load config!!!')
     lexie_cloud.users.load_db_from_s3()
     # isort: off
     from lexie_cloud.views import view # pylint: disable=import-outside-toplevel
